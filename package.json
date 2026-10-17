@@ -11,8 +11,7 @@
     "models.mjs",
     "stream.mjs",
     "tool-response.mjs",
-    "README.md",
-    "LICENSE"
+    "README.md"
   ],
   "keywords": [
     "opencode",
