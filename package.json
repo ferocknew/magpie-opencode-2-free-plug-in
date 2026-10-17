@@ -1,0 +1,40 @@
+{
+  "name": "magpie-opencode-2-free-plug-in",
+  "version": "1.0.0",
+  "description": "OpenCode 2's free models in magpie and OpenCode, through the public credential of opencode.ai's inference gateway",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "provider.mjs",
+    "models.mjs",
+    "stream.mjs",
+    "tool-response.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode2",
+    "opencode-plugin",
+    "magpie",
+    "free",
+    "provider"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferocknew/magpie-opencode-2-free-plug-in.git"
+  },
+  "scripts": {
+    "test": "node --test index.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "magpie": {
+    "icon": "https://opencode.ai/favicon-v3.ico",
+    "maxConcurrency": 2
+  }
+}
