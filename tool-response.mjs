@@ -76,6 +76,11 @@ const CORE_SCHEMAS = {
 export function normalizeTools(body) {
   if (body.tools != null && !Array.isArray(body.tools)) throw new Error("tools must be an array");
   body.tools ??= [];
+  for (const tool of body.tools) {
+    if (tool?.type === "function" && tool.function && !tool.function.description) {
+      tool.function.description = "Tool function";
+    }
+  }
   const present = new Set(
     body.tools.map((tool) => tool?.function?.name).filter((name) => typeof name === "string"),
   );

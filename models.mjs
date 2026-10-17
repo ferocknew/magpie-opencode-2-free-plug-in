@@ -11,7 +11,7 @@ export const MODELS_URL = "https://opencode.ai/inference/v1/models";
 export const CATALOG_URL = "https://models.opencode.ai/api.json";
 export const CLIENT_VERSION = "2.0.31";
 // The exact identity OpenCode 2.0.31 sends; the free tier's gate reads it.
-export const USER_AGENT = `opencode/${CLIENT_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`;
+export const USER_AGENT = `opencode/latest/${CLIENT_VERSION}/cli`;
 
 const reasoning = { field: "reasoning_content" };
 

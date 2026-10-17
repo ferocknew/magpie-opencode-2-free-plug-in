@@ -242,7 +242,7 @@ test("auth offers the public key and accepts any typed key", async (t) => {
   assert.equal(loader.apiKey, "public");
 });
 
-test("the request carries OpenCode 2's identity, a session and a request id", async (t) => {
+test("the request carries OpenCode 2's identity, a session and session affinity", async (t) => {
   const { hooks, state, origin } = await fixture(t);
   const loader = await hooks.auth.loader(PUBLIC_AUTH);
   const response = await loader.fetch(`${origin}/v1/chat/completions`, {
@@ -257,12 +257,16 @@ test("the request carries OpenCode 2's identity, a session and a request id", as
   await response.text();
   const call = state.calls.find((entry) => entry.url === "/v1/chat/completions");
   assert.ok(call, "chat request must have been sent");
+  assert.equal(call.headers["user-agent"], "opencode/latest/2.0.31/cli");
   assert.equal(call.headers["user-agent"], USER_AGENT);
   assert.equal(call.headers["x-opencode-client"], "cli");
   assert.equal(call.headers.authorization, "Bearer public");
-  assert.ok(realSessionID(call.headers["x-opencode-session"]));
-  assert.equal(call.headers["x-opencode-session-id"], call.headers["x-opencode-session"]);
-  assert.match(call.headers["x-opencode-request"], /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+  const session = call.headers["x-opencode-session"];
+  assert.ok(realSessionID(session));
+  assert.equal(call.headers["x-opencode-session-id"], session);
+  assert.equal(call.headers["x-session-affinity"], session);
+  assert.equal(call.headers["x-session-id"], session);
+  assert.equal(call.headers["x-opencode-request"], undefined);
   assert.equal(call.headers["x-opencode-project"], "global");
 });
 

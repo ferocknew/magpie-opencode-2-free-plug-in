@@ -290,7 +290,6 @@ async function server(_input, options = {}) {
               "x-opencode-session-id": session,
               "x-session-affinity": session,
               "X-Session-Id": session,
-              "x-opencode-request": opencodeID("msg", false),
             });
 
             const response = await fetch(chatURL, {
