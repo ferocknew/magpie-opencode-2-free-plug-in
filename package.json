@@ -27,7 +27,7 @@
     "url": "git+https://github.com/ferocknew/magpie-opencode-2-free-plug-in.git"
   },
   "scripts": {
-    "test": "node --test index.test.mjs"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

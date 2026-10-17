@@ -292,13 +292,23 @@ async function server(_input, options = {}) {
               "X-Session-Id": session,
             });
 
-            const response = await fetch(chatURL, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(body),
-              signal: request.signal,
-              redirect: "error",
-            });
+            const requestedEffort = body.reasoning_effort;
+            const tryMax = requestedEffort === "high" || requestedEffort === "max";
+            const efforts = tryMax ? ["max", "high"] : [requestedEffort];
+            let response;
+            for (const effort of efforts) {
+              if (effort !== undefined) body.reasoning_effort = effort;
+              else delete body.reasoning_effort;
+              response = await fetch(chatURL, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(body),
+                signal: request.signal,
+                redirect: "error",
+              });
+              if (response.ok || efforts.indexOf(effort) === efforts.length - 1) break;
+              await response.body?.cancel();
+            }
             const guarded = await guardResponse(response, toolPolicy, {
               endCutShort: streaming,
             });
