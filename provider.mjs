@@ -20,10 +20,26 @@ const PUBLIC_KEY = "public";
 // The host's session id reaches the loader through this private header,
 // set by the chat.headers hook. It never leaves the plugin.
 const SESSION_HEADER = "x-magpie-opencode2-session";
+// The session reaches the gateway under all of these names.
+const SESSION_HEADERS = [
+  "x-opencode-session",
+  "x-opencode-session-id",
+  "x-session-affinity",
+  "X-Session-Id",
+];
+// A session the gateway has pinned to an upstream that is down answers 503
+// whatever is sent, so the conversation's session is kept for this many tries
+// and a new one is made after that: a fresh session can land elsewhere.
+const SESSION_TRIES = 2;
 // A model the last list did not have waits this long before the list is
 // asked again: a model made free since is served at once, and a model typed
 // in by hand doesn't ask the list on every request.
 const RELIST_AFTER = 60_000;
+// An upstream the gateway has not woken yet answers 503 and is up a moment
+// later, so a server error is sent again before it is given to the caller.
+const RETRIES = 7;
+const RETRY_DELAY = 250;
+const RETRY_DELAY_MAX = 1000;
 
 // opencodeID makes an id the way OpenCode 2 makes one: 12 lowercase hex
 // characters of Date.now() * 0x1000 plus a per-millisecond counter, the
@@ -124,6 +140,20 @@ async function readJSON(url, headers, signal) {
     throw new Error(`Model discovery returned HTTP ${response.status}`);
   }
   return response.json();
+}
+
+function pause(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("Aborted"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function catalogFreeModels(catalog) {
@@ -291,6 +321,9 @@ async function server(_input, options = {}) {
               "x-session-affinity": session,
               "X-Session-Id": session,
             });
+            const setSession = (value) => {
+              for (const name of SESSION_HEADERS) headers.set(name, value);
+            };
 
             const requestedEffort = body.reasoning_effort;
             const tryMax = requestedEffort === "high" || requestedEffort === "max";
@@ -299,13 +332,21 @@ async function server(_input, options = {}) {
             for (const effort of efforts) {
               if (effort !== undefined) body.reasoning_effort = effort;
               else delete body.reasoning_effort;
-              response = await fetch(chatURL, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(body),
-                signal: request.signal,
-                redirect: "error",
-              });
+              // A 503 is the gateway's upstream still starting; the request
+              // goes through again after a growing pause.
+              for (let attempt = 0; ; attempt += 1) {
+                if (attempt >= SESSION_TRIES) setSession(opencodeID("ses", true));
+                response = await fetch(chatURL, {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify(body),
+                  signal: request.signal,
+                  redirect: "error",
+                });
+                if (response.ok || response.status < 500 || attempt >= RETRIES) break;
+                await response.body?.cancel();
+                await pause(Math.min(RETRY_DELAY * 2 ** attempt, RETRY_DELAY_MAX), request.signal);
+              }
               if (response.ok || efforts.indexOf(effort) === efforts.length - 1) break;
               await response.body?.cancel();
             }

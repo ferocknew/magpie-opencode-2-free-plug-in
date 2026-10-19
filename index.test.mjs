@@ -256,3 +256,79 @@ test("falls back to reasoning_effort high when upstream refuses max", async (t) 
   assert.equal(calls[0].body.reasoning_effort, "max");
   assert.equal(calls[1].body.reasoning_effort, "high");
 });
+
+// --- a cold upstream -----------------------------------------------------
+
+test("a 503 is sent again until the upstream answers", async (t) => {
+  const { hooks, state, origin } = await fixture(t);
+  let chat = 0;
+  state.onCall = (call) => {
+    if (call.url !== "/v1/chat/completions") return;
+    chat += 1;
+    if (chat < 3) {
+      state.status = 503;
+      state.contentType = "application/json";
+      state.reply =
+        '{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}';
+    } else {
+      state.status = 200;
+      state.contentType = "text/event-stream";
+      state.reply = sse([
+        { id: "chat-12", choices: [{ index: 0, delta: { content: "awake" }, finish_reason: "stop" }] },
+      ]);
+    }
+  };
+  const loader = await hooks.auth.loader(PUBLIC_AUTH);
+  const response = await loader.fetch(`${origin}/v1/chat/completions`, {
+    method: "POST",
+    body: JSON.stringify({
+      model: "glm-5.3-flash-free",
+      stream: true,
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  });
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /awake/);
+  assert.equal(chat, 3, "the two 503s must have been sent again");
+});
+
+test("a 5xx that never clears is given to the caller", async (t) => {
+  const { hooks, state, origin } = await fixture(t);
+  state.status = 503;
+  state.contentType = "application/json";
+  state.reply = '{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}';
+  const loader = await hooks.auth.loader(PUBLIC_AUTH);
+  const response = await loader.fetch(`${origin}/v1/chat/completions`, {
+    method: "POST",
+    body: JSON.stringify({ model: "glm-5.3-flash-free", messages: [{ role: "user", content: "hi" }] }),
+  });
+  assert.equal(response.status, 503);
+  const calls = state.calls.filter((entry) => entry.url === "/v1/chat/completions");
+  assert.equal(calls.length, 8, "the first try and seven retries");
+});
+
+test("a session that keeps failing is replaced", async (t) => {
+  const { hooks, state, origin } = await fixture(t);
+  state.status = 503;
+  state.contentType = "application/json";
+  state.reply =
+    '{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}';
+  const loader = await hooks.auth.loader(PUBLIC_AUTH);
+  const response = await loader.fetch(`${origin}/v1/chat/completions`, {
+    method: "POST",
+    body: JSON.stringify({ model: "glm-5.3-flash-free", messages: [{ role: "user", content: "hi" }] }),
+  });
+  assert.equal(response.status, 503);
+  const sessions = state.calls
+    .filter((entry) => entry.url === "/v1/chat/completions")
+    .map((entry) => entry.headers["x-opencode-session"]);
+  assert.equal(sessions.length, 8);
+  assert.equal(sessions[0], sessions[1], "the conversation's session is kept for the first tries");
+  assert.notEqual(sessions[2], sessions[1], "a new session is made after them");
+  assert.equal(new Set(sessions.slice(2)).size, sessions.length - 2, "every later try gets its own");
+  for (const entry of state.calls.filter((call) => call.url === "/v1/chat/completions")) {
+    assert.equal(entry.headers["x-opencode-session-id"], entry.headers["x-opencode-session"]);
+    assert.equal(entry.headers["x-session-affinity"], entry.headers["x-opencode-session"]);
+    assert.equal(entry.headers["x-session-id"], entry.headers["x-opencode-session"]);
+  }
+});
